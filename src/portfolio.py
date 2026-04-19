@@ -288,6 +288,102 @@ def portfolio_ter(
     weighted_ter = sum(w * t for w, t in zip(weights, ter_per_asset))
     return weighted_ter
 
+def simulate_dca(
+    prices: pd.DataFrame,
+    weights: np.ndarray,
+    monthly_contribution: float,
+    start_date: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    """
+    Simula un Piano d'Accumulo (PAC / Dollar-Cost Averaging).
+
+    Ogni mese viene versata una cifra fissa e investita secondo i pesi target.
+    Il portfolio viene ribilanciato implicitamente ad ogni versamento.
+
+    Args:
+        prices: DataFrame con prezzi degli asset (colonne = ticker).
+        weights: array dei pesi target (stesso ordine delle colonne di prices).
+        monthly_contribution: importo versato ogni mese (es. 300.0).
+        start_date: data di inizio del PAC. Se None, parte dalla prima data
+                    disponibile in prices.
+
+    Returns:
+        DataFrame indicizzato per data con colonne:
+            - 'Versato': capitale cumulato versato fino a quel giorno.
+            - 'Valore': valore di mercato del portafoglio a quel giorno.
+            - 'Rendimento %': (Valore - Versato) / Versato * 100.
+    """
+    weights = np.asarray(weights, dtype=float)
+    if not np.isclose(weights.sum(), 1.0):
+        raise ValueError(f"I pesi devono sommare a 1, ma sommano a {weights.sum():.4f}")
+    if (weights < 0).any():
+        raise ValueError("I pesi non possono essere negativi.")
+    if len(weights) != prices.shape[1]:
+        raise ValueError(
+            f"Numero pesi ({len(weights)}) diverso dal numero di asset ({prices.shape[1]})."
+        )
+
+    if start_date is None:
+        start_date = prices.index[0]
+    else:
+        start_date = pd.Timestamp(start_date)
+
+    # Filtra prezzi dalla data di inizio PAC
+    prices_pac = prices.loc[prices.index >= start_date].copy()
+
+    if prices_pac.empty:
+        raise ValueError("Nessun dato disponibile dopo la data di inizio PAC.")
+
+    # Giorni di versamento: il primo giorno di trading di ogni mese
+    # resample('MS') = Month Start. Usiamo il primo giorno di trading disponibile di ogni mese.
+    monthly_dates = (
+        prices_pac.resample("MS").first().index  # inizio di ogni mese
+    )
+    # Per ogni mese, trova il primo giorno di trading effettivo
+    contribution_dates = []
+    for month_start in monthly_dates:
+        # Primo giorno di trading >= month_start
+        valid_dates = prices_pac.index[prices_pac.index >= month_start]
+        if len(valid_dates) > 0:
+            contribution_dates.append(valid_dates[0])
+    contribution_dates = pd.DatetimeIndex(contribution_dates).unique()
+
+    # Inizializza: numero di unità possedute per ciascun asset
+    units = np.zeros(len(weights))
+    total_contributed = 0.0
+
+    # Serie di output
+    portfolio_value = pd.Series(index=prices_pac.index, dtype=float)
+    contributed_series = pd.Series(index=prices_pac.index, dtype=float)
+
+    for date in prices_pac.index:
+        # Se è un giorno di versamento, compra
+        if date in contribution_dates:
+            current_prices = prices_pac.loc[date].values
+            # Alloca il contributo secondo i pesi target
+            cash_per_asset = monthly_contribution * weights
+            # Compra unità: cash / prezzo
+            new_units = cash_per_asset / current_prices
+            units += new_units
+            total_contributed += monthly_contribution
+
+        # Valorizza il portfolio a questa data
+        portfolio_value.loc[date] = (units * prices_pac.loc[date].values).sum()
+        contributed_series.loc[date] = total_contributed
+
+    # Costruisci DataFrame risultato
+    result = pd.DataFrame({
+        "Versato": contributed_series,
+        "Valore": portfolio_value,
+    })
+    result["Rendimento %"] = np.where(
+        result["Versato"] > 0,
+        (result["Valore"] - result["Versato"]) / result["Versato"] * 100,
+        0.0,
+    )
+
+    return result
+
 if __name__ == "__main__":
     from src.data_loader import download_prices
     from src.metrics import summary_metrics
@@ -315,3 +411,5 @@ if __name__ == "__main__":
     # Trasformiamo il valore portafoglio in "prezzo" per usare le funzioni di metrics
     portfolio_as_prices = pv_rebal.to_frame("Portfolio_60_40")
     print(summary_metrics(portfolio_as_prices, risk_free_rate=0.03))
+
+    

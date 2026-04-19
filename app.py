@@ -6,16 +6,20 @@ Interfaccia Streamlit per analizzare portafogli di ETF.
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import plotly.graph_objects as go
+import numpy as np
 
 from src.data_loader import download_prices
 from src.metrics import alpha_beta, daily_returns
 from src.reference_data import get_etf_dataframe, get_index_dataframe, detect_currency_from_ticker
 from src.portfolio import (
-    portfolio_cumulative_value,
-    portfolio_summary,
     portfolio_returns,
-    portfolio_ter,
+    portfolio_cumulative_value,
+    portfolio_cumulative_returns,
+    portfolio_summary,
     correlation_matrix,
+    portfolio_ter,
+    simulate_dca,
 )
 
 # ==========================================================================
@@ -187,6 +191,36 @@ else:
 
 # Bottone di avvio
 run_button = st.sidebar.button("🚀 Analizza Portfolio", type="primary")
+
+# ─── SIMULAZIONE PAC (Piano d'Accumulo) ───
+st.sidebar.markdown("---")
+st.sidebar.subheader("💰 Simulazione PAC")
+
+enable_pac = st.sidebar.checkbox(
+    "Simula un Piano d'Accumulo",
+    value=False,
+    help="Invece di investire tutto in un colpo, versa una cifra fissa ogni mese.",
+)
+
+if enable_pac:
+    monthly_contribution = st.sidebar.number_input(
+        "Versamento mensile (€)",
+        min_value=50.0,
+        max_value=10000.0,
+        value=300.0,
+        step=50.0,
+        help="Cifra versata il primo giorno di trading di ogni mese.",
+    )
+    pac_start_date = st.sidebar.date_input(
+        "Data inizio PAC",
+        value=start_date,
+        min_value=start_date,
+        max_value=end_date,
+        help="Quando parte il primo versamento.",
+    )
+else:
+    monthly_contribution = None
+    pac_start_date = None
 
 # Expander con liste di riferimento
 st.sidebar.markdown("---")
@@ -450,6 +484,105 @@ if run_button:
             f"ℹ️ Hai inserito {len(ters)} TER ma {len(weights)} pesi. "
             "Aggiungi un TER per ogni ETF per vedere i costi."
         )
+
+    # =========================================================
+    # SIMULAZIONE PAC
+    # =========================================================
+    if enable_pac:
+        st.header("💰 Simulazione Piano d'Accumulo (PAC)")
+
+        try:
+            pac_df = simulate_dca(
+                prices=prices,
+                weights=weights,
+                monthly_contribution=monthly_contribution,
+                start_date=pd.Timestamp(pac_start_date),
+            )
+
+            total_invested = pac_df["Versato"].iloc[-1]
+            final_value = pac_df["Valore"].iloc[-1]
+            absolute_gain = final_value - total_invested
+            percentage_gain = (absolute_gain / total_invested) * 100 if total_invested > 0 else 0.0
+
+            # Confronto con PIC (Lump Sum): stesso capitale totale investito all'inizio
+            pic_prices = prices.loc[prices.index >= pd.Timestamp(pac_start_date)]
+            if not pic_prices.empty:
+                initial_prices = pic_prices.iloc[0].values
+                units_pic = (total_invested * np.asarray(weights)) / initial_prices
+                final_prices = pic_prices.iloc[-1].values
+                final_value_pic = (units_pic * final_prices).sum()
+                pic_gain_pct = ((final_value_pic - total_invested) / total_invested) * 100
+            else:
+                final_value_pic = total_invested
+                pic_gain_pct = 0.0
+
+            # Metriche principali
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("💶 Capitale versato", f"€ {total_invested:,.0f}")
+            col2.metric("📈 Valore finale (PAC)", f"€ {final_value:,.0f}",
+                        delta=f"{percentage_gain:+.2f}%")
+            col3.metric("💼 Valore finale (PIC)", f"€ {final_value_pic:,.0f}",
+                        delta=f"{pic_gain_pct:+.2f}%")
+            diff = final_value - final_value_pic
+            col4.metric("⚖️ PAC vs PIC", f"€ {diff:+,.0f}",
+                        delta=f"{percentage_gain - pic_gain_pct:+.2f} p.p.")
+
+            # Spiegazione contestuale
+            if final_value > final_value_pic:
+                st.success(
+                    f"✅ In questo periodo il **PAC ha battuto il PIC** di €{diff:,.0f}. "
+                    f"Questo accade in mercati volatili o con drawdown nel mezzo: "
+                    f"il PAC ha comprato quote a prezzi più bassi durante i ribassi."
+                )
+            else:
+                st.info(
+                    f"ℹ️ In questo periodo il **PIC ha battuto il PAC** di €{-diff:,.0f}. "
+                    f"Questo è tipico dei mercati in trend rialzista: "
+                    f"investire tutto subito significa esporsi prima alla crescita."
+                )
+
+            # Grafico PAC
+            fig_pac = go.Figure()
+            fig_pac.add_trace(go.Scatter(
+                x=pac_df.index, y=pac_df["Versato"],
+                mode="lines", name="Capitale versato",
+                line=dict(color="gray", dash="dash", width=2),
+            ))
+            fig_pac.add_trace(go.Scatter(
+                x=pac_df.index, y=pac_df["Valore"],
+                mode="lines", name="Valore portfolio (PAC)",
+                line=dict(color="#2E8B57", width=3),
+            ))
+            fig_pac.update_layout(
+                title="PAC: capitale versato vs valore del portafoglio",
+                xaxis_title="Data",
+                yaxis_title="Euro (€)",
+                hovermode="x unified",
+                height=450,
+            )
+            st.plotly_chart(fig_pac, use_container_width=True)
+
+            # Nota educativa
+            with st.expander("📘 PAC vs PIC: quale è meglio?"):
+                st.markdown("""
+                **PIC (Piano di Investimento del Capitale)**: investi tutto subito.
+                Storicamente batte il PAC nel ~65-70% dei periodi perché i mercati salgono
+                più spesso di quanto scendano (time in market > timing the market).
+
+                **PAC (Piano d'Accumulo)**: investi gradualmente. Vantaggi:
+                - Adatto a chi non ha un capitale iniziale ma uno stipendio mensile
+                - Riduce il rischio di "entrare al picco"
+                - Impatto psicologico minore nei drawdown (si continua a comprare "a sconto")
+
+                **Quando il PAC batte il PIC?**
+                Quando il mercato scende nel mezzo del periodo e poi recupera: il PAC
+                compra quote a prezzi più bassi, abbassando il prezzo medio di carico.
+
+                **Dollar-Cost Averaging** è il nome tecnico della strategia PAC in inglese.
+                """)
+
+        except ValueError as e:
+            st.error(f"❌ Errore nella simulazione PAC: {e}")
 
     # ============================================================
     # GRAFICO PERFORMANCE
