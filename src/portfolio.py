@@ -140,6 +140,54 @@ def correlation_matrix(prices: pd.DataFrame) -> pd.DataFrame:
     returns = daily_returns(prices)
     return returns.corr()
 
+def portfolio_summary(
+    prices: pd.DataFrame,
+    weights: list[float],
+    risk_free_rate: float = 0.0,
+    rebalance: bool = True,
+) -> pd.Series:
+    """
+    Calcola tutte le metriche del portafoglio in un colpo solo.
+
+    Args:
+        prices: DataFrame con i prezzi.
+        weights: pesi del portafoglio.
+        risk_free_rate: tasso risk-free annualizzato.
+        rebalance: True = constant-mix, False = buy & hold.
+
+    Returns:
+        Series con CAGR, Volatility, Sharpe Ratio, Max Drawdown del portafoglio.
+    """
+    # Rimuoviamo righe con valori mancanti per evitare distorsioni
+    clean_prices = prices.dropna()
+
+    # Rendimenti del portafoglio
+    port_returns = portfolio_returns(clean_prices, weights, rebalance=rebalance)
+
+    # Valore cumulato (partendo da 1)
+    cum_value = (1 + port_returns).cumprod()
+
+    # Metriche calcolate direttamente sui rendimenti
+    n_days = (cum_value.index[-1] - cum_value.index[0]).days
+    n_years = n_days / 365.25
+
+    cagr_val = cum_value.iloc[-1] ** (1 / n_years) - 1
+    vol_val = port_returns.std() * np.sqrt(252)
+
+    rf_daily = (1 + risk_free_rate) ** (1 / 252) - 1
+    sharpe_val = (port_returns.mean() - rf_daily) * 252 / vol_val
+
+    # Max drawdown sul valore cumulato
+    running_max = cum_value.cummax()
+    dd = (cum_value - running_max) / running_max
+    mdd_val = dd.min()
+
+    return pd.Series({
+        "CAGR": cagr_val,
+        "Volatility": vol_val,
+        "Sharpe Ratio": sharpe_val,
+        "Max Drawdown": mdd_val,
+    })
 
 if __name__ == "__main__":
     from src.data_loader import download_prices
