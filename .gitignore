@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Dati scaricati (cache yfinance, CSV grandi, ecc.)
+data/cache/
+*.csv
+!requirements.txt
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Environment variables
+.env
