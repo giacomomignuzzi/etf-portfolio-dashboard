@@ -189,8 +189,6 @@ else:
     rebalance_frequency = "daily"
     rebalance_every_n = 1
 
-# Bottone di avvio
-run_button = st.sidebar.button("🚀 Analizza Portfolio", type="primary")
 
 # ─── SIMULAZIONE PAC (Piano d'Accumulo) ───
 st.sidebar.markdown("---")
@@ -244,6 +242,14 @@ with st.sidebar.expander("📘 Ticker di riferimento"):
             "💡 Gli indici non includono TER né dividendi; usa un ETF "
             "corrispondente se vuoi un confronto più realistico."
         )
+
+# ─── BOTTONE ANALIZZA (posizionato in fondo per comodità) ───
+st.sidebar.markdown("---")
+run_button = st.sidebar.button(
+    "🚀 Analizza Portfolio",
+    type="primary",
+    use_container_width=True,
+)
 
 # ==========================================================================
 # ELABORAZIONE
