@@ -143,13 +143,63 @@ def summary_metrics(
         "Max Drawdown": max_drawdown(prices),
     }).T  # .T trasposta: così le metriche sono righe e gli asset sono colonne
 
+def alpha_beta(
+    portfolio_returns: pd.Series,
+    benchmark_returns: pd.Series,
+    risk_free_rate: float = 0.0,
+) -> dict:
+    """
+    Calcola alpha e beta del portafoglio rispetto al benchmark (CAPM).
+
+    Args:
+        portfolio_returns: rendimenti giornalieri del portafoglio.
+        benchmark_returns: rendimenti giornalieri del benchmark.
+        risk_free_rate: tasso risk-free annualizzato.
+
+    Returns:
+        Dizionario con:
+        - 'alpha': rendimento in eccesso annualizzato attribuibile alla gestione attiva
+        - 'beta': sensibilità del portafoglio al benchmark
+        - 'correlation': correlazione tra portafoglio e benchmark
+    """
+    # Allineiamo le due serie sulle date comuni
+    df = pd.concat(
+        [portfolio_returns.rename("portfolio"), benchmark_returns.rename("benchmark")],
+        axis=1,
+    ).dropna()
+
+    if len(df) < 2:
+        raise ValueError(
+            "Serie troppo corta per calcolare alpha/beta dopo l'allineamento."
+        )
+
+    # Beta = Cov(P, B) / Var(B)
+    covariance = df["portfolio"].cov(df["benchmark"])
+    variance_benchmark = df["benchmark"].var()
+    beta = covariance / variance_benchmark
+
+    # Alpha (CAPM, annualizzato):
+    # alpha = R_p - [R_f + beta * (R_b - R_f)]
+    rf_daily = (1 + risk_free_rate) ** (1 / TRADING_DAYS_PER_YEAR) - 1
+    mean_portfolio = df["portfolio"].mean()
+    mean_benchmark = df["benchmark"].mean()
+    alpha_daily = mean_portfolio - (rf_daily + beta * (mean_benchmark - rf_daily))
+    alpha_annualized = alpha_daily * TRADING_DAYS_PER_YEAR
+
+    correlation = df["portfolio"].corr(df["benchmark"])
+
+    return {
+        "alpha": alpha_annualized,
+        "beta": beta,
+        "correlation": correlation,
+    }
 
 if __name__ == "__main__":
     # Test rapido: importiamo il data_loader e testiamo tutte le metriche
     # NOTA: quando si esegue un modulo dentro src/, l'import relativo funziona solo
     # se lanciato dalla root del progetto come `python -m src.metrics`
     from src.data_loader import download_prices
-    
+
     print("Scarico dati di test...")
     prices = download_prices(
         ["VWCE.DE", "AGGH.MI"],
