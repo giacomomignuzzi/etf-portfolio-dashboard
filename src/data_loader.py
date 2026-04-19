@@ -61,8 +61,9 @@ def download_prices(
         # Caso più ticker: selezioniamo solo il livello "Close"
         prices = raw_data["Close"].copy()
 
-    # Rimuovi eventuali righe con tutti NaN (giorni senza dati)
-    prices = prices.dropna(how="all")
+    # Rimuovi giorni in cui ANCHE SOLO UN ticker manca di dati
+    # (es. festività nazionali diverse tra borse)
+    prices = prices.dropna(how="any")
 
     return prices
 

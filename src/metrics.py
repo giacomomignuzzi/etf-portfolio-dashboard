@@ -148,8 +148,8 @@ if __name__ == "__main__":
     # Test rapido: importiamo il data_loader e testiamo tutte le metriche
     # NOTA: quando si esegue un modulo dentro src/, l'import relativo funziona solo
     # se lanciato dalla root del progetto come `python -m src.metrics`
-    from data_loader import download_prices
-
+    from src.data_loader import download_prices
+    
     print("Scarico dati di test...")
     prices = download_prices(
         ["VWCE.DE", "AGGH.MI"],
