@@ -48,33 +48,94 @@ def portfolio_returns(
     prices: pd.DataFrame,
     weights: list[float],
     rebalance: bool = True,
+    rebalance_frequency: str = "daily",
+    rebalance_every_n: int = 1,
 ) -> pd.Series:
     """
-    Calcola i rendimenti giornalieri del portafoglio.
+    Calcola i rendimenti giornalieri del portafoglio con strategia di ribilanciamento.
 
     Args:
         prices: DataFrame con i prezzi (colonne = ticker).
         weights: lista di pesi nello stesso ordine delle colonne di prices.
-        rebalance: se True, i pesi sono ribilanciati ogni giorno (constant-mix).
-                   se False, strategia buy & hold (i pesi driftano nel tempo).
+        rebalance: se False → buy & hold (i pesi driftano dal giorno 1 a fine periodo).
+                   se True → ribilanciamento periodico.
+        rebalance_frequency: "daily" | "monthly" | "quarterly" | "yearly".
+                             Usato solo se rebalance=True.
+        rebalance_every_n: ribilancia ogni N periodi.
+                           Es: frequency="yearly", every_n=2 → ogni 2 anni.
+                           Ignorato se frequency="daily".
 
     Returns:
         Series con i rendimenti giornalieri del portafoglio.
     """
     w = validate_weights(list(prices.columns), weights)
-
     returns = daily_returns(prices)
 
-    if rebalance:
-        # Constant-mix: ogni giorno il portafoglio viene ribilanciato ai pesi target
-        # r_p = sum(w_i * r_i)
-        portfolio_r = (returns * w).sum(axis=1)
-    else:
-        # Buy & hold: calcoliamo il valore del portafoglio e poi i rendimenti
+    if not rebalance:
+        # Buy & hold: calcoliamo il valore del portafoglio (i pesi driftano)
         portfolio_value = portfolio_cumulative_value(prices, weights)
-        portfolio_r = portfolio_value.pct_change().dropna()
+        return portfolio_value.pct_change().dropna()
 
-    return portfolio_r
+    if rebalance_frequency == "daily":
+        # Constant-mix: pesi ribilanciati ogni giorno
+        return (returns * w).sum(axis=1)
+
+    # Ribilanciamento periodico
+    # Mappiamo la frequenza sul "pandas offset alias"
+    freq_map = {
+        "monthly": "MS",     # Month Start
+        "quarterly": "QS",   # Quarter Start
+        "yearly": "YS",      # Year Start
+    }
+
+    if rebalance_frequency not in freq_map:
+        raise ValueError(
+            f"rebalance_frequency non valida: {rebalance_frequency}. "
+            f"Valori ammessi: 'daily', 'monthly', 'quarterly', 'yearly'."
+        )
+
+    if rebalance_every_n < 1:
+        raise ValueError(f"rebalance_every_n deve essere >= 1, ricevuto {rebalance_every_n}.")
+
+    # Genera TUTTE le date con la frequenza base
+    all_candidate_dates = pd.date_range(
+        start=prices.index[0],
+        end=prices.index[-1],
+        freq=freq_map[rebalance_frequency],
+    )
+
+    # Prendi 1 data ogni N (es: ogni 2 anni → una sì, una no)
+    rebalance_dates = all_candidate_dates[::rebalance_every_n]
+
+    # Aggiungiamo sempre il primo giorno come "allocazione iniziale"
+    rebalance_dates = rebalance_dates.union([prices.index[0]])
+
+    # Per ogni segmento tra due date di rebalancing, calcoliamo il valore
+    # del portafoglio in modalità buy & hold, poi ricomponiamo i rendimenti
+    all_returns = []
+
+    for i in range(len(rebalance_dates)):
+        period_start = rebalance_dates[i]
+        period_end = rebalance_dates[i + 1] if i + 1 < len(rebalance_dates) else prices.index[-1]
+
+        if i + 1 < len(rebalance_dates):
+            segment_prices = prices.loc[period_start:period_end].iloc[:-1]
+        else:
+            segment_prices = prices.loc[period_start:period_end]
+
+        if len(segment_prices) < 2:
+            continue
+
+        # Buy & hold dentro il segmento con i pesi target
+        shares = w / segment_prices.iloc[0].values
+        segment_value = (segment_prices * shares).sum(axis=1)
+        segment_returns = segment_value.pct_change().dropna()
+        all_returns.append(segment_returns)
+
+    if not all_returns:
+        raise ValueError("Nessun segmento valido per il ribilanciamento.")
+
+    return pd.concat(all_returns).sort_index()
 
 
 def portfolio_cumulative_value(
@@ -111,6 +172,8 @@ def portfolio_cumulative_returns(
     prices: pd.DataFrame,
     weights: list[float],
     rebalance: bool = True,
+    rebalance_frequency: str = "daily",
+    rebalance_every_n: int = 1,
 ) -> pd.Series:
     """
     Calcola il rendimento cumulato del portafoglio.
@@ -123,7 +186,8 @@ def portfolio_cumulative_returns(
     Returns:
         Series con il rendimento cumulato (0 al primo giorno).
     """
-    returns = portfolio_returns(prices, weights, rebalance=rebalance)
+    returns = portfolio_returns(prices, weights, rebalance=rebalance, rebalance_frequency=rebalance_frequency,
+        rebalance_every_n=rebalance_every_n,)
     return (1 + returns).cumprod() - 1
 
 
@@ -145,6 +209,8 @@ def portfolio_summary(
     weights: list[float],
     risk_free_rate: float = 0.0,
     rebalance: bool = True,
+    rebalance_frequency: str = "daily",
+    rebalance_every_n: int = 1,
 ) -> pd.Series:
     """
     Calcola tutte le metriche del portafoglio in un colpo solo.
@@ -162,7 +228,8 @@ def portfolio_summary(
     clean_prices = prices.dropna()
 
     # Rendimenti del portafoglio
-    port_returns = portfolio_returns(clean_prices, weights, rebalance=rebalance)
+    port_returns = portfolio_returns(clean_prices, weights, rebalance=rebalance, rebalance_frequency=rebalance_frequency,
+        rebalance_every_n=rebalance_every_n)
 
     # Valore cumulato (partendo da 1)
     cum_value = (1 + port_returns).cumprod()

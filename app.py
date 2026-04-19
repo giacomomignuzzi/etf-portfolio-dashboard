@@ -120,12 +120,69 @@ benchmark_ticker = st.sidebar.text_input(
 ).strip()
 
 # Strategia ribilanciamento
-rebalance = st.sidebar.radio(
-    "Strategia",
-    options=["Rebalanced (constant-mix)", "Buy & Hold"],
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚖️ Strategia")
+
+strategy = st.sidebar.radio(
+    "Tipo di gestione",
+    options=["Rebalanced", "Buy & Hold"],
     index=0,
+    help=(
+        "**Rebalanced**: ripristina periodicamente i pesi target. "
+        "**Buy & Hold**: compra il primo giorno e mantiene fino alla fine "
+        "(i pesi driftano nel tempo)."
+    ),
 )
-is_rebalanced = rebalance.startswith("Rebalanced")
+is_rebalanced = strategy == "Rebalanced"
+
+if is_rebalanced:
+    rebalance_frequency = st.sidebar.selectbox(
+        "Unità di frequenza",
+        options=["daily", "monthly", "quarterly", "yearly"],
+        index=3,
+        help=(
+            "Unità temporale base per il ribilanciamento. "
+            "Combinala con 'ogni N' per strategie custom (es: ogni 2 anni)."
+        ),
+    )
+
+    if rebalance_frequency == "daily":
+        rebalance_every_n = 1
+        st.sidebar.caption("ℹ️ Daily ignora il parametro 'ogni N'.")
+    else:
+        rebalance_every_n = st.sidebar.number_input(
+            f"Ogni N {rebalance_frequency}",
+            min_value=1,
+            max_value=20,
+            value=1,
+            step=1,
+            help=(
+                f"Ribilancia ogni N {rebalance_frequency}. "
+                f"Es: 2 con 'yearly' → ogni 2 anni. "
+                f"1 = ogni periodo (comportamento standard)."
+            ),
+        )
+
+    if rebalance_frequency == "daily":
+        strategy_label = "ogni giorno"
+    elif rebalance_every_n == 1:
+        strategy_label = {
+            "monthly": "ogni mese",
+            "quarterly": "ogni trimestre",
+            "yearly": "ogni anno",
+        }[rebalance_frequency]
+    else:
+        unit_label = {
+            "monthly": "mesi",
+            "quarterly": "trimestri",
+            "yearly": "anni",
+        }[rebalance_frequency]
+        strategy_label = f"ogni {rebalance_every_n} {unit_label}"
+
+    st.sidebar.caption(f"🔁 Ribilanciamento: **{strategy_label}**.")
+else:
+    rebalance_frequency = "daily"
+    rebalance_every_n = 1
 
 # Bottone di avvio
 run_button = st.sidebar.button("🚀 Analizza Portfolio", type="primary")
@@ -186,7 +243,12 @@ if run_button:
     st.header("📊 Metriche del portafoglio")
 
     summary = portfolio_summary(
-        prices, weights, risk_free_rate=risk_free, rebalance=is_rebalanced
+        prices,
+        weights,
+        risk_free_rate=risk_free,
+        rebalance=is_rebalanced,
+        rebalance_frequency=rebalance_frequency,
+        rebalance_every_n=rebalance_every_n,
     )
 
     col1, col2, col3, col4 = st.columns(4)
@@ -216,7 +278,11 @@ if run_button:
         if benchmark_prices is not None:
             # Calcoliamo i rendimenti del portafoglio e del benchmark
             port_returns = portfolio_returns(
-                prices.dropna(), weights, rebalance=is_rebalanced
+                prices.dropna(),
+                weights,
+                rebalance=is_rebalanced,
+                rebalance_frequency=rebalance_frequency,
+                rebalance_every_n=rebalance_every_n,
             )
             bench_returns = daily_returns(benchmark_prices[benchmark_ticker])
 
