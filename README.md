@@ -1,53 +1,126 @@
-# ETF Portfolio Dashboard
+# 📊 ETF Portfolio Dashboard
 
-> Interactive dashboard for analyzing ETF portfolios: historical performance, volatility, and risk metrics.
+An interactive Streamlit web application to analyze historical performance of multi-asset ETF portfolios. Built as a portfolio project to demonstrate quantitative finance concepts and Python full-stack development.
 
-## Overview
+**🌐 [Live Demo](https://giacomo-etf-dashboard.streamlit.app)**
 
-A web-based tool that allows users to build custom ETF portfolios by specifying tickers and weights, then analyze how those portfolios would have performed historically. The dashboard computes key financial metrics and visualizes results through interactive charts.
+![Dashboard Overview](docs/screenshots/01-dashboard-overview.png)
 
-## Planned Features
+---
 
-- Portfolio construction with up to 10 ETFs and custom weights
-- Historical performance simulation (buy & hold, with optional rebalancing)
-- Key risk metrics: CAGR, annualized volatility, Sharpe ratio, maximum drawdown
-- Correlation matrix across assets
-- Comparison with benchmark indices
-- Interactive charts (cumulative returns, drawdown, rolling volatility)
+## ✨ Features
 
-## Tech Stack
+### Portfolio Analytics
+- **Core metrics**: CAGR, annualized volatility, Sharpe ratio, max drawdown
+- **Customizable time period** and risk-free rate
+- **Rebalancing strategies**: buy & hold vs periodic rebalancing (daily, monthly, quarterly, yearly, or every N periods)
+- **Multi-asset support** with user-defined weights
 
-- **Python 3.14**
-- **Streamlit** — web app framework
-- **pandas / NumPy** — data manipulation and numerical computing
-- **yfinance** — historical market data from Yahoo Finance
-- **Plotly** — interactive charts
+### Benchmark Comparison (CAPM)
+- Side-by-side comparison with any market index or ETF
+- **Alpha** (annualized, risk-adjusted excess return)
+- **Beta** (systemic risk exposure)
+- **Correlation** between portfolio and benchmark
+- **Currency-awareness**: automatic warnings when portfolio and benchmark are in different currencies, avoiding misleading comparisons from FX effects
 
-## Project Status
+![Benchmark Comparison](docs/screenshots/02-benchmark-comparison.png)
 
-🚧 **Under active development.** Setup and project scaffolding complete. Core modules coming soon.
+### Cost Analysis
+- Weighted **TER** (Total Expense Ratio) computation
+- Annual cost in euros on hypothetical investment
+- 10-year projected cost for long-term impact visualization
 
-## Getting Started (for developers)
+### PAC / Dollar-Cost Averaging Simulation
+- Simulate monthly contributions over time
+- **PAC vs PIC** (lump sum) comparison with identical total capital
+- Contextual explanation of which strategy won and why
+- Interactive chart overlaying capital contributed vs portfolio value
 
-```bash
+![PAC Simulation](docs/screenshots/04-pac-simulation.png)
+
+### Visualizations
+- Normalized performance chart (portfolio vs benchmark, base 100)
+- Individual ETF price curves
+- Correlation heatmap across assets
+- Full price table
+
+![Performance Chart](docs/screenshots/03-performance-chart.png)
+
+### Reference Data
+- Curated list of **15+ UCITS ETFs** for European investors (Vanguard, iShares, SPDR, Amundi, Xtrackers)
+- **14+ market indices** (S&P 500, Euro Stoxx 50, Nikkei, MSCI World, etc.)
+- Displayed as reference tables inside the sidebar for quick ticker lookup
+
+---
+
+## 🛠️ Tech Stack
+
+- **Python 3.11+**
+- **Streamlit** — Web UI framework
+- **pandas, numpy** — Data manipulation and numerics
+- **yfinance** — Historical price data (Yahoo Finance)
+- **plotly** — Interactive charts
+- **Deployed on Streamlit Community Cloud**
+
+---
+
+## 📁 Project Structure
+
+\`\`\`
+etf-portfolio-dashboard/
+├── src/
+│   ├── data_loader.py       # yfinance download with multi-exchange data alignment
+│   ├── metrics.py           # CAGR, volatility, Sharpe, drawdown, alpha/beta (CAPM)
+│   ├── portfolio.py         # Portfolio construction, rebalancing, TER, DCA simulation
+│   └── reference_data.py    # Curated ETF/index lists + currency detection
+├── .streamlit/
+│   └── config.toml          # Custom theme configuration
+├── docs/screenshots/        # Dashboard screenshots for documentation
+├── app.py                   # Streamlit entry point
+├── requirements.txt
+└── README.md
+\`\`\`
+
+---
+
+## 🚀 Getting Started (Local)
+
+**Requirements**: Python 3.11+, pip
+
+\`\`\`bash
 # Clone the repository
 git clone https://github.com/giacomomignuzzi/etf-portfolio-dashboard.git
 cd etf-portfolio-dashboard
 
-# Create and activate virtual environment
+# Create and activate a virtual environment
 python3 -m venv venv
-source venv/bin/activate  # macOS/Linux
-# venv\Scripts\activate   # Windows
+source venv/bin/activate   # On Windows: venv\\Scripts\\activate
 
 # Install dependencies
 pip install -r requirements.txt
-```
 
-## Author
+# Run the app
+streamlit run app.py
+\`\`\`
 
-**Giacomo Mignuzzi**  
-[GitHub](https://github.com/giacomomignuzzi)
+The app will open automatically in your browser at `http://localhost:8501`.
 
 ---
 
-*This project is part of a personal portfolio to demonstrate skills in Python, financial analysis, and data visualization.*
+## 🧠 Key Design Decisions
+
+**Multi-exchange data alignment**: When combining ETFs from different exchanges (e.g. Xetra and Borsa Italiana), trading calendars differ. The app uses `dropna(how="any")` when aligning prices to avoid misleading portfolio values on mismatched dates — a subtle but common bug in retail portfolio tools.
+
+**Currency-awareness**: The app detects quotation currencies from Yahoo Finance ticker suffixes (.DE, .MI, .L, .T, etc.) and warns users when their portfolio mixes currencies or when the benchmark is in a different currency than the portfolio. This prevents the common pitfall of attributing FX-driven returns to asset performance.
+
+**Rebalancing flexibility**: Beyond standard frequencies (daily/monthly/quarterly/yearly), users can specify "every N periods" (e.g. rebalance every 2 quarters) for realistic simulation of institutional strategies.
+
+**PAC as a first-class feature**: Most retail tools show only lump-sum returns. Since ~90% of European retail investors actually invest monthly from salary, the dashboard includes full DCA simulation with comparison to lump-sum — an honest reflection of how real money gets invested.
+
+---
+
+## 📚 About
+
+Built by [Giacomo Mignuzzi](https://github.com/giacomomignuzzi) as a hands-on exercise in applied quantitative finance and Python development.
+
+**Disclaimer**: This tool is for educational purposes only. It is not financial advice. Historical performance does not guarantee future results.
