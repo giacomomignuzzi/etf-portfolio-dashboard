@@ -9,6 +9,7 @@ import streamlit as st
 
 from src.data_loader import download_prices
 from src.metrics import alpha_beta, daily_returns
+from src.reference_data import get_etf_dataframe, get_index_dataframe, detect_currency_from_ticker
 from src.portfolio import (
     portfolio_cumulative_value,
     portfolio_summary,
@@ -187,6 +188,29 @@ else:
 # Bottone di avvio
 run_button = st.sidebar.button("🚀 Analizza Portfolio", type="primary")
 
+# Expander con liste di riferimento
+st.sidebar.markdown("---")
+with st.sidebar.expander("📘 Ticker di riferimento"):
+    tab1, tab2 = st.tabs(["ETF", "Indici"])
+
+    with tab1:
+        st.markdown("**ETF UCITS comuni** (per investitori EU)")
+        etf_df = get_etf_dataframe()
+        st.dataframe(etf_df, use_container_width=True, hide_index=True, height=300)
+        st.caption(
+            "💡 Copia il Ticker e incollalo nel campo 'Ticker' in alto. "
+            "Verifica TER aggiornati su justetf.com."
+        )
+
+    with tab2:
+        st.markdown("**Indici di mercato** (per benchmark)")
+        idx_df = get_index_dataframe()
+        st.dataframe(idx_df, use_container_width=True, hide_index=True, height=300)
+        st.caption(
+            "💡 Gli indici non includono TER né dividendi; usa un ETF "
+            "corrispondente se vuoi un confronto più realistico."
+        )
+
 # ==========================================================================
 # ELABORAZIONE
 # ==========================================================================
@@ -237,6 +261,24 @@ if run_button:
             f"Prova a escludere gli ETF più giovani o a scegliere una data di inizio più recente."
         )
 
+    # =========================================================
+    # CHECK VALUTE INTERNO AL PORTFOLIO
+    # =========================================================
+    if len(tickers) > 1:
+        asset_currencies = {t: detect_currency_from_ticker(t) for t in tickers}
+        known_currencies = {c for c in asset_currencies.values() if c != "UNKNOWN"}
+
+        if len(known_currencies) > 1:
+            detail = ", ".join(
+                f"`{ticker}` ({curr})" for ticker, curr in asset_currencies.items()
+            )
+            st.warning(
+                f"⚠️ **Valute miste nel portafoglio**: i tuoi asset sono quotati in "
+                f"valute diverse ({detail}). I rendimenti e la volatilità del portafoglio "
+                f"riflettono sia l'andamento degli asset sia le oscillazioni del cambio. "
+                f"Considera di usare ETF tutti nella stessa valuta (es. tutti EUR) "
+                f"oppure versioni EUR-hedged dove disponibili."
+            )
     # ============================================================
     # METRICHE PRINCIPALI
     # ============================================================
@@ -264,7 +306,26 @@ if run_button:
 
     if benchmark_ticker:
         st.header("📏 Confronto con benchmark")
+    # Currency-awareness check
+        portfolio_currencies = {detect_currency_from_ticker(t) for t in tickers}
+        benchmark_currency = detect_currency_from_ticker(benchmark_ticker)
 
+        # Rimuovi "UNKNOWN" per valutare solo le valute identificate
+        known_portfolio_currencies = portfolio_currencies - {"UNKNOWN"}
+
+        if (
+            benchmark_currency != "UNKNOWN"
+            and known_portfolio_currencies
+            and benchmark_currency not in known_portfolio_currencies
+        ):
+            portfolio_curr_str = ", ".join(sorted(known_portfolio_currencies))
+            st.warning(
+                f"⚠️ **Attenzione valute**: il portafoglio è in **{portfolio_curr_str}** "
+                f"ma il benchmark `{benchmark_ticker}` è in **{benchmark_currency}**. "
+                f"I rendimenti includono effetti di cambio valutario. "
+                f"Per un confronto più pulito, usa un benchmark nella stessa valuta "
+                f"(vedi 'Ticker di riferimento' nella sidebar)."
+            )
         try:
             benchmark_prices = download_prices(
                 [benchmark_ticker],
