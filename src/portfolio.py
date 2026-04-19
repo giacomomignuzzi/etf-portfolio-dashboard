@@ -189,6 +189,38 @@ def portfolio_summary(
         "Max Drawdown": mdd_val,
     })
 
+def portfolio_ter(
+    weights: list[float],
+    ter_per_asset: list[float],
+) -> float:
+    """
+    Calcola il TER medio ponderato del portafoglio.
+
+    Args:
+        weights: pesi del portafoglio (devono sommare a 1).
+        ter_per_asset: TER di ciascun asset, espresso in decimali
+                       (es. 0.0022 per un TER dello 0.22%).
+
+    Returns:
+        TER medio ponderato (in decimali).
+        Es: 0.0015 = 0.15% annuo.
+
+    Raises:
+        ValueError: se i due input hanno lunghezze diverse o TER negativi.
+    """
+    if len(weights) != len(ter_per_asset):
+        raise ValueError(
+            f"Numero pesi ({len(weights)}) diverso dal numero di TER "
+            f"({len(ter_per_asset)})."
+        )
+
+    if any(t < 0 for t in ter_per_asset):
+        raise ValueError("I TER non possono essere negativi.")
+
+    # Media pesata: sum(w_i * ter_i)
+    weighted_ter = sum(w * t for w, t in zip(weights, ter_per_asset))
+    return weighted_ter
+
 if __name__ == "__main__":
     from src.data_loader import download_prices
     from src.metrics import summary_metrics

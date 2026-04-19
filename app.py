@@ -13,6 +13,7 @@ from src.portfolio import (
     portfolio_cumulative_value,
     portfolio_summary,
     portfolio_returns,
+    portfolio_ter,
     correlation_matrix,
 )
 
@@ -55,6 +56,31 @@ try:
 except ValueError:
     st.sidebar.error("Pesi non validi. Inserisci numeri separati da virgole.")
     st.stop()
+
+# Input TER per ogni ETF (opzionale)
+ter_input = st.sidebar.text_input(
+    "TER (% annuo, separati da virgola)",
+    value="0.22, 0.10",
+    help=(
+        "Total Expense Ratio di ogni ETF (es. 0.22 per 0.22%). "
+        "Trovi questo dato su justetf.com o sul sito del provider."
+    ),
+)
+try:
+    ters = [float(t.strip()) / 100 for t in ter_input.split(",") if t.strip()]
+except ValueError:
+    st.sidebar.error("TER non validi. Inserisci numeri separati da virgole.")
+    st.stop()
+
+# Capitale ipotetico
+capital_input = st.sidebar.number_input(
+    "Capitale investito ipotetico (€)",
+    min_value=1000,
+    max_value=10_000_000,
+    value=10_000,
+    step=1000,
+    help="Serve solo per calcolare quanto paghi di TER in euro ogni anno.",
+)
 
 # Date
 col1, col2 = st.sidebar.columns(2)
@@ -246,6 +272,57 @@ if run_button:
                 )
             except ValueError as e:
                 st.warning(f"⚠️ Impossibile calcolare alpha/beta: {e}")
+
+    # ============================================================
+    # COSTI DEL PORTAFOGLIO (TER)
+    # ============================================================
+    if len(ters) == len(weights):
+        st.header("💸 Costi del portafoglio")
+
+        try:
+            port_ter = portfolio_ter(weights, ters)
+            annual_cost_eur = port_ter * capital_input
+
+            col_t1, col_t2, col_t3 = st.columns(3)
+            col_t1.metric(
+                "TER portafoglio (% annuo)",
+                f"{port_ter * 100:.3f}%",
+                help="Media pesata dei TER dei singoli ETF.",
+            )
+            col_t2.metric(
+                "Costo annuo",
+                f"€{annual_cost_eur:,.2f}",
+                help=f"Su un capitale di €{capital_input:,.0f}.",
+            )
+            col_t3.metric(
+                "Costo in 10 anni",
+                f"€{annual_cost_eur * 10:,.2f}",
+                help=(
+                    "Stima semplificata: TER costante × 10 anni. "
+                    "La stima reale è più alta per via della capitalizzazione "
+                    "(il TER si applica ogni anno sul capitale che cresce)."
+                ),
+            )
+
+            # Dettaglio per asset
+            with st.expander("📋 Dettaglio TER per asset"):
+                ter_detail = pd.DataFrame({
+                    "Ticker": tickers,
+                    "Peso": [f"{w * 100:.1f}%" for w in weights],
+                    "TER": [f"{t * 100:.3f}%" for t in ters],
+                    "Contributo al TER totale": [
+                        f"{w * t * 100:.4f}%" for w, t in zip(weights, ters)
+                    ],
+                })
+                st.dataframe(ter_detail, use_container_width=True, hide_index=True)
+
+        except ValueError as e:
+            st.warning(f"⚠️ Impossibile calcolare il TER: {e}")
+    else:
+        st.info(
+            f"ℹ️ Hai inserito {len(ters)} TER ma {len(weights)} pesi. "
+            "Aggiungi un TER per ogni ETF per vedere i costi."
+        )
 
     # ============================================================
     # GRAFICO PERFORMANCE
